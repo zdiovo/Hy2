@@ -19,7 +19,25 @@
 在目标 Linux 服务器上用 root 运行：
 
 ```bash
-bash hy2-manager.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/zdiovo/Hy2/main/hy2-manager.sh)
+```
+
+或使用 wget：
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/zdiovo/Hy2/main/hy2-manager.sh)
+```
+
+进入菜单后可选择：
+
+```text
+18. 安装/更新 hy2 命令
+```
+
+安装完成后，以后直接输入：
+
+```bash
+hy2
 ```
 
 建议在云厂商安全组和本机防火墙放行：
@@ -41,6 +59,7 @@ bash hy2-manager.sh
 - 开启/关闭 Salamander 混淆。
 - 修改拥塞控制。
 - 多次导出 mihomo YAML，并为不同客户端填写不同 `up` / `down`。
+- 安装/更新 `hy2` 系统命令，之后可直接输入 `hy2` 打开菜单。
 - 查看状态/日志、重启、更新、备份/恢复、卸载。
 
 ## 卸载说明

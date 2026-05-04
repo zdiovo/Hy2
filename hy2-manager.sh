@@ -7,6 +7,9 @@ CONFIG_FILE="$CONFIG_DIR/config.yaml"
 STATE_FILE="$CONFIG_DIR/hy2-manager.env"
 SERVICE_NAME="hysteria-server.service"
 MIHOMO_FILE="$CONFIG_DIR/hy2-mihomo.yaml"
+MANAGER_COMMAND="${HY2_MANAGER_COMMAND:-hy2}"
+MANAGER_INSTALL_PATH="${HY2_MANAGER_INSTALL_PATH:-/usr/local/bin/$MANAGER_COMMAND}"
+MANAGER_RAW_URL="${HY2_MANAGER_RAW_URL:-https://raw.githubusercontent.com/zdiovo/Hy2/main/hy2-manager.sh}"
 
 DEFAULT_PORT_RANGE="20000-50000"
 DEFAULT_SINGLE_PORT="443"
@@ -531,6 +534,47 @@ update_hysteria() {
   fi
 }
 
+install_hy2_command() {
+  # 把管理脚本安装为系统命令，之后直接输入 hy2 即可进入菜单。
+  local tmp_file install_dir
+  install_dir="$(dirname "$MANAGER_INSTALL_PATH")"
+  tmp_file="$(mktemp /tmp/hy2-manager.XXXXXX)"
+
+  mkdir -p "$install_dir"
+  info "正在安装/更新命令：$MANAGER_INSTALL_PATH"
+
+  if command_exists curl; then
+    curl -fsSL "$MANAGER_RAW_URL" -o "$tmp_file"
+  elif command_exists wget; then
+    wget -qO "$tmp_file" "$MANAGER_RAW_URL"
+  else
+    rm -f "$tmp_file"
+    err "未检测到 curl 或 wget，无法下载 hy2 命令脚本。"
+    return 1
+  fi
+
+  if ! bash -n "$tmp_file"; then
+    rm -f "$tmp_file"
+    err "下载到的脚本未通过语法检查，已取消安装。"
+    return 1
+  fi
+
+  if command_exists install; then
+    install -m 755 "$tmp_file" "$MANAGER_INSTALL_PATH"
+  else
+    cp "$tmp_file" "$MANAGER_INSTALL_PATH"
+    chmod 755 "$MANAGER_INSTALL_PATH"
+  fi
+  rm -f "$tmp_file"
+
+  ok "hy2 命令已安装/更新：$MANAGER_INSTALL_PATH"
+  if command -v "$MANAGER_COMMAND" >/dev/null 2>&1; then
+    ok "以后可直接输入：$MANAGER_COMMAND"
+  else
+    warn "$install_dir 不在当前 PATH 中。你仍可用完整路径运行：$MANAGER_INSTALL_PATH"
+  fi
+}
+
 show_status() {
   if command_exists systemctl; then
     systemctl status "$SERVICE_NAME" --no-pager || true
@@ -847,6 +891,7 @@ main_menu() {
 15. 备份配置
 16. 恢复最近备份
 17. 卸载 Hysteria2
+18. 安装/更新 hy2 命令
 0. 退出
 ===========================================================
 EOF
@@ -870,6 +915,7 @@ EOF
       15) backup_config; pause ;;
       16) restore_config; pause ;;
       17) uninstall_hysteria; pause ;;
+      18) install_hy2_command; pause ;;
       0) exit 0 ;;
       *) warn "无效选择。"; pause ;;
     esac
