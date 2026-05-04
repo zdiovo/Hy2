@@ -231,6 +231,41 @@ set_server_config_permissions() {
   fi
 }
 
+detect_hysteria_service_user() {
+  local service_user
+  service_user=""
+
+  if command_exists systemctl; then
+    service_user="$(systemctl show "$SERVICE_NAME" -p User --value 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$service_user" && -f /etc/systemd/system/hysteria-server.service ]]; then
+    service_user="$(grep -E '^User=' /etc/systemd/system/hysteria-server.service 2>/dev/null | tail -n1 | cut -d= -f2 || true)"
+  fi
+
+  printf '%s' "${service_user:-hysteria}"
+}
+
+stop_disable_hysteria_services() {
+  local services service
+  services="$SERVICE_NAME"
+
+  if command_exists systemctl; then
+    services="$(
+      {
+        printf '%s\n' "$SERVICE_NAME"
+        systemctl list-units --all --type=service --plain --no-legend 'hysteria-server*.service' 2>/dev/null | awk '{print $1}'
+        systemctl list-unit-files --type=service --plain --no-legend 'hysteria-server*.service' 2>/dev/null | awk '{print $1}'
+      } | sort -u
+    )"
+    while IFS= read -r service; do
+      [[ -z "$service" ]] && continue
+      systemctl stop "$service" >/dev/null 2>&1 || true
+      systemctl disable "$service" >/dev/null 2>&1 || true
+    done <<< "$services"
+  fi
+}
+
 check_environment() {
   info "检查运行环境..."
   if ! command_exists systemctl; then
@@ -681,17 +716,56 @@ restore_config() {
 }
 
 uninstall_hysteria() {
-  warn "卸载会停止服务，并删除 $CONFIG_DIR。"
-  if ! confirm "确认卸载？"; then
+  warn "真正卸载会移除 Hysteria2 程序、systemd 服务，以及本脚本生成的配置。"
+  warn "官方卸载路径：bash <(curl -fsSL https://get.hy2.sh/) --remove"
+  if ! confirm "确认继续卸载？"; then
     return
   fi
-  if command_exists systemctl; then
-    systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
-    systemctl disable "$SERVICE_NAME" >/dev/null 2>&1 || true
+
+  local keep_data="n"
+  local service_user
+  service_user="$(detect_hysteria_service_user)"
+
+  if confirm "是否保留配置、备份、客户端 YAML、ACME 证书和服务用户？默认全部删除"; then
+    keep_data="y"
   fi
-  rm -rf "$CONFIG_DIR"
-  rm -f /etc/systemd/system/"$SERVICE_NAME"
-  ok "已删除配置目录。Hysteria2 二进制如需删除，请根据官方安装位置手动清理。"
+
+  stop_disable_hysteria_services
+
+  if command_exists curl; then
+    info "调用官方安装脚本执行卸载..."
+    bash <(curl -fsSL https://get.hy2.sh/) --remove || warn "官方卸载脚本执行失败，将继续清理已知残留。"
+  else
+    warn "未检测到 curl，跳过官方卸载脚本，改为清理已知路径。"
+  fi
+
+  rm -f /usr/local/bin/hysteria
+  rm -f /etc/systemd/system/hysteria-server.service
+  rm -f /etc/systemd/system/hysteria-server@.service
+  rm -f /etc/systemd/system/multi-user.target.wants/hysteria-server.service
+  rm -f /etc/systemd/system/multi-user.target.wants/hysteria-server@*.service
+
+  if [[ "$keep_data" == "y" ]]; then
+    ok "已按要求保留配置目录、ACME 数据和服务用户。"
+  else
+    rm -rf "$CONFIG_DIR"
+    ok "已删除配置目录：$CONFIG_DIR"
+
+    if [[ -n "$service_user" && "$service_user" != "root" ]] && id "$service_user" >/dev/null 2>&1; then
+      if command_exists userdel; then
+        userdel -r "$service_user" >/dev/null 2>&1 || warn "删除用户 $service_user 失败，请手动检查。"
+      else
+        warn "未检测到 userdel，请手动删除用户 $service_user。"
+      fi
+    fi
+  fi
+
+  if command_exists systemctl; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl reset-failed "$SERVICE_NAME" "hysteria-server@.service" >/dev/null 2>&1 || true
+  fi
+
+  ok "Hysteria2 卸载完成。"
 }
 
 fresh_install_flow() {

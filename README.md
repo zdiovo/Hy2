@@ -43,6 +43,19 @@ bash hy2-manager.sh
 - 多次导出 mihomo YAML，并为不同客户端填写不同 `up` / `down`。
 - 查看状态/日志、重启、更新、备份/恢复、卸载。
 
+## 卸载说明
+
+菜单中的 `17. 卸载 Hysteria2` 会执行真正卸载：
+
+- 调用官方卸载命令：`bash <(curl -fsSL https://get.hy2.sh/) --remove`。
+- 停止并禁用 `hysteria-server.service` 和相关模板服务。
+- 删除 `/usr/local/bin/hysteria`。
+- 删除 systemd unit 和开机启动链接。
+- 默认删除 `/etc/hysteria` 下的服务端配置、脚本状态、备份和 mihomo YAML。
+- 默认删除官方服务用户 `hysteria` 及其 home 目录，也就是 ACME 证书数据。
+
+如果想保留配置、备份、客户端 YAML、ACME 证书和服务用户，卸载时选择“保留数据”即可。
+
 ## 常见问题
 
 如果日志出现：
