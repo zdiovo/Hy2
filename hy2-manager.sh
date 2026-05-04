@@ -527,6 +527,26 @@ restart_service() {
   fi
 }
 
+start_service() {
+  if command_exists systemctl; then
+    repair_acme_email_if_needed
+    [[ -f "$CONFIG_FILE" ]] && set_server_config_permissions
+    systemctl enable --now "$SERVICE_NAME"
+    ok "服务已启动：$SERVICE_NAME"
+  else
+    warn "未检测到 systemctl，请手动启动 Hysteria2。"
+  fi
+}
+
+stop_service() {
+  if command_exists systemctl; then
+    systemctl stop "$SERVICE_NAME"
+    ok "服务已停止：$SERVICE_NAME"
+  else
+    warn "未检测到 systemctl，请手动停止 Hysteria2。"
+  fi
+}
+
 update_hysteria() {
   install_hysteria
   if [[ -f "$CONFIG_FILE" ]] && confirm "是否立即重启服务以使用新版 Hysteria2？" "y"; then
@@ -886,12 +906,14 @@ main_menu() {
 10. 查看服务状态
 11. 查看最近日志
 12. 实时跟随日志
-13. 重启服务
-14. 更新 Hysteria2
-15. 备份配置
-16. 恢复最近备份
-17. 卸载 Hysteria2
-18. 安装/更新 hy2 命令
+13. 启动服务
+14. 停止服务
+15. 重启服务
+16. 更新 Hysteria2
+17. 备份配置
+18. 恢复最近备份
+19. 卸载 Hysteria2
+20. 安装/更新 hy2 命令
 0. 退出
 ===========================================================
 EOF
@@ -910,12 +932,14 @@ EOF
       10) show_status; pause ;;
       11) show_logs; pause ;;
       12) follow_logs ;;
-      13) restart_service; pause ;;
-      14) update_hysteria; pause ;;
-      15) backup_config; pause ;;
-      16) restore_config; pause ;;
-      17) uninstall_hysteria; pause ;;
-      18) install_hy2_command; pause ;;
+      13) start_service; pause ;;
+      14) stop_service; pause ;;
+      15) restart_service; pause ;;
+      16) update_hysteria; pause ;;
+      17) backup_config; pause ;;
+      18) restore_config; pause ;;
+      19) uninstall_hysteria; pause ;;
+      20) install_hy2_command; pause ;;
       0) exit 0 ;;
       *) warn "无效选择。"; pause ;;
     esac
