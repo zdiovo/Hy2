@@ -42,3 +42,18 @@ bash hy2-manager.sh
 - 修改拥塞控制。
 - 多次导出 mihomo YAML，并为不同客户端填写不同 `up` / `down`。
 - 查看状态/日志、重启、更新、备份/恢复、卸载。
+
+## 常见问题
+
+如果日志出现：
+
+```text
+failed to read server config {"error": "open /etc/hysteria/config.yaml: permission denied"}
+```
+
+说明服务进程没有权限读取配置文件。新版脚本会自动识别 systemd 服务用户并修正配置权限。旧版本可临时执行：
+
+```bash
+chmod 644 /etc/hysteria/config.yaml
+systemctl restart hysteria-server.service
+```

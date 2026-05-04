@@ -195,6 +195,42 @@ print_firewall_hint() {
   fi
 }
 
+set_server_config_permissions() {
+  # 官方 systemd 服务可能不是 root 运行；config.yaml 必须让服务用户可读。
+  local service_user service_group
+  service_user=""
+  service_group=""
+
+  if command_exists systemctl; then
+    service_user="$(systemctl show "$SERVICE_NAME" -p User --value 2>/dev/null || true)"
+    service_group="$(systemctl show "$SERVICE_NAME" -p Group --value 2>/dev/null || true)"
+  fi
+
+  if [[ -n "$service_user" && "$service_user" != "root" ]] && id "$service_user" >/dev/null 2>&1; then
+    if [[ -z "$service_group" ]] || ! getent group "$service_group" >/dev/null 2>&1; then
+      service_group="$(id -gn "$service_user")"
+    fi
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+      chown root:"$service_group" "$CONFIG_DIR" "$CONFIG_FILE"
+    fi
+    chmod 750 "$CONFIG_DIR"
+    chmod 640 "$CONFIG_FILE"
+    ok "已设置配置权限：root:$service_group 640，服务用户 $service_user 可读取。"
+  elif [[ -z "$service_user" || "$service_user" == "root" ]]; then
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+      chown root:root "$CONFIG_FILE" 2>/dev/null || chown root:0 "$CONFIG_FILE"
+    fi
+    chmod 600 "$CONFIG_FILE"
+    ok "已设置配置权限：root:root 600。"
+  else
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+      chown root:root "$CONFIG_FILE" 2>/dev/null || chown root:0 "$CONFIG_FILE"
+    fi
+    chmod 644 "$CONFIG_FILE"
+    warn "未能确认服务用户 $service_user，已临时设置 config.yaml 为 644 以保证服务可读取。"
+  fi
+}
+
 check_environment() {
   info "检查运行环境..."
   if ! command_exists systemctl; then
@@ -324,7 +360,7 @@ EOF
 
   CONGESTION_TYPE="$DEFAULT_CONGESTION"
   BBR_PROFILE="$DEFAULT_BBR_PROFILE"
-  if confirm "是否调整拥塞控制？默认 bbr standard"; then
+  if confirm "是否进入高级拥塞控制设置？默认否，直接回车使用 bbr standard"; then
     select_congestion
   fi
 
@@ -403,7 +439,7 @@ write_server_config() {
     printf '    rewriteHost: true\n'
   } > "$CONFIG_FILE"
 
-  chmod 600 "$CONFIG_FILE"
+  set_server_config_permissions
   ok "服务端配置已生成：$CONFIG_FILE"
 }
 
@@ -638,6 +674,7 @@ restore_config() {
   if confirm "确认恢复？"; then
     [[ -n "$latest_config" ]] && cp -a "$latest_config" "$CONFIG_FILE"
     [[ -n "$latest_state" ]] && cp -a "$latest_state" "$STATE_FILE"
+    [[ -f "$CONFIG_FILE" ]] && set_server_config_permissions
     restart_service
   fi
 }
