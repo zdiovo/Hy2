@@ -5,7 +5,7 @@
 ## 主要设计
 
 - 服务端使用官方 Hysteria2 安装脚本：`https://get.hy2.sh/`。
-- ACME 邮箱自动随机生成。
+- ACME 邮箱基于你输入的域名自动随机生成，例如 `hy2-random@hy2.example.com`，避免使用会被 CA 拒绝的 `example.com` 保留域名。
 - 认证密码可以直接回车随机生成，也可以手动输入。
 - 服务端刻意不配置 `bandwidth`。客户端 `up` 和 `down` 只在导出 mihomo YAML 时询问。
 - 端口跳跃默认使用 `20000-50000`，第一个端口作为主端口。

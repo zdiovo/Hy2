@@ -84,9 +84,30 @@ random_password() {
 }
 
 random_email() {
+  local domain="${1:-}"
   local token
   token="$(random_password | cut -c1-12)"
-  printf 'hy2-%s@example.com' "$token"
+  if validate_domain "$domain"; then
+    printf 'hy2-%s@%s' "$token" "$domain"
+  else
+    printf ''
+  fi
+}
+
+email_uses_forbidden_domain() {
+  local email="$1"
+  [[ "$email" =~ @(example\.com|example\.net|example\.org|invalid|localhost)$ ]]
+}
+
+ensure_acme_email() {
+  # Let's Encrypt 会拒绝 example.com 这类保留域名；随机邮箱使用用户自己的域名。
+  if [[ -z "${ACME_EMAIL:-}" ]] || email_uses_forbidden_domain "$ACME_EMAIL"; then
+    ACME_EMAIL="$(random_email "$DOMAIN")"
+  fi
+  if [[ -z "$ACME_EMAIL" ]]; then
+    err "无法生成 ACME 邮箱，请检查域名格式。"
+    return 1
+  fi
 }
 
 yaml_quote() {
@@ -121,7 +142,7 @@ load_state() {
     source "$STATE_FILE"
   fi
   DOMAIN="${DOMAIN:-}"
-  ACME_EMAIL="${ACME_EMAIL:-$(random_email)}"
+  ACME_EMAIL="${ACME_EMAIL:-}"
   PASSWORD="${PASSWORD:-}"
   LISTEN_MODE="${LISTEN_MODE:-range}"
   PORT_START="${PORT_START:-20000}"
@@ -341,7 +362,7 @@ configure_base() {
     warn "域名格式不正确。"
   done
 
-  ACME_EMAIL="$(random_email)"
+  ACME_EMAIL="$(random_email "$DOMAIN")"
   ok "ACME 邮箱已随机生成：$ACME_EMAIL"
 
   local password_input
@@ -432,6 +453,8 @@ write_server_config() {
     err "缺少域名或密码，请先完成基础配置。"
     return 1
   fi
+  ensure_acme_email
+  save_state
 
   backup_config
   mkdir -p "$CONFIG_DIR"
@@ -478,8 +501,20 @@ write_server_config() {
   ok "服务端配置已生成：$CONFIG_FILE"
 }
 
+repair_acme_email_if_needed() {
+  load_state
+  if [[ -z "$DOMAIN" || -z "$PASSWORD" ]]; then
+    return
+  fi
+  if [[ -z "${ACME_EMAIL:-}" ]] || email_uses_forbidden_domain "$ACME_EMAIL"; then
+    warn "检测到 ACME 邮箱为空或使用了 CA 禁止的保留域名，正在自动修复。"
+    write_server_config
+  fi
+}
+
 restart_service() {
   if command_exists systemctl; then
+    repair_acme_email_if_needed
     [[ -f "$CONFIG_FILE" ]] && set_server_config_permissions
     systemctl enable --now "$SERVICE_NAME"
     systemctl restart "$SERVICE_NAME"
@@ -506,7 +541,16 @@ show_status() {
 
 show_logs() {
   if command_exists journalctl; then
-    journalctl -u "$SERVICE_NAME" -e --no-pager || true
+    journalctl -u "$SERVICE_NAME" -n 80 --no-pager || true
+  else
+    warn "未检测到 journalctl。"
+  fi
+}
+
+show_logs_since() {
+  local since="$1"
+  if command_exists journalctl; then
+    journalctl -u "$SERVICE_NAME" --since "$since" --no-pager || true
   else
     warn "未检测到 journalctl。"
   fi
@@ -554,7 +598,7 @@ change_domain_acme() {
     fi
     warn "域名格式不正确。"
   done
-  ACME_EMAIL="$(random_email)"
+  ACME_EMAIL="$(random_email "$DOMAIN")"
   ok "新的 ACME 邮箱：$ACME_EMAIL"
   save_state
   write_server_config
@@ -769,11 +813,13 @@ uninstall_hysteria() {
 }
 
 fresh_install_flow() {
+  local log_since
   check_environment
   install_hysteria
   configure_base
+  log_since="$(date '+%Y-%m-%d %H:%M:%S')"
   restart_service
-  show_logs
+  show_logs_since "$log_since"
   export_mihomo
 }
 
