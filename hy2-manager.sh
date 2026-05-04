@@ -445,6 +445,7 @@ write_server_config() {
 
 restart_service() {
   if command_exists systemctl; then
+    [[ -f "$CONFIG_FILE" ]] && set_server_config_permissions
     systemctl enable --now "$SERVICE_NAME"
     systemctl restart "$SERVICE_NAME"
     ok "服务已重启：$SERVICE_NAME"
